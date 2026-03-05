@@ -1,0 +1,83 @@
+
+import userModel from "../../Database/Models/User.model.js";
+import bcrypt from "bcrypt"
+import jwt from "jsonwebtoken"
+import { sendEmail } from "../../Email/email.js";
+
+
+let listUsers = async (req, res) => {
+    let users = await userModel.find();
+    res.json({mesaage: "List Of Users", data: users});
+}
+
+let signup =  async (req, res) => {
+    let addUser = await userModel.insertMany(req.body); // store in db
+    // send email 
+    sendEmail(req.body.email)
+    addUser[0].password = undefined
+    res.json({message: "User Added", data: addUser})
+}
+
+
+ let signin = async (req, res, next) => {
+
+    let foundUser = req.foundUser 
+
+    if(!foundUser){
+        let error = new Error("Invalid Password or Email")
+        error.statusCode = 422
+        return next(error)
+    }
+
+    let matchPassword = bcrypt.compareSync(
+        req.body.password,
+        foundUser.password
+    )
+
+    if(!matchPassword){
+        let error = new Error("Invalid Password or Email")
+        error.statusCode = 422
+        return next(error)
+    }
+
+    if(foundUser.isConfirmed == false){
+        let error = new Error("Please Verify Your Email")
+        error.statusCode = 401
+        return next(error)
+    }
+
+    let token = jwt.sign(
+        {
+            _id: foundUser._id,
+            role: foundUser.role,
+            email: foundUser.email
+        },
+        "iti"
+    )
+
+    res.json({
+        message: "Welcome",
+        data: foundUser,
+        token: token
+    })
+}
+       
+
+
+
+let verifyAccount = (req,res) => {
+       
+    let verifyEmail = req.params.email 
+    jwt.verify(verifyEmail, "emailToken", async(err, decoded) => {
+        if(err){
+            return res.status(401).json({message: "Invalid Token"})
+        }
+       
+        console.log(decoded);
+        await userModel.findOneAndUpdate({email: decoded}, {isConfirmed: true})
+        res.status(200).json({message: "Account Verified"})
+    })
+}
+
+
+export {listUsers,signin,signup,verifyAccount}
